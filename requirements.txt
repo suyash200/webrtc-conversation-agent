@@ -1,0 +1,7 @@
+fastapi
+aiortc
+numpy
+elevenlabs
+groq
+python-dotenv
+openai

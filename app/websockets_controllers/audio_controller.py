@@ -6,6 +6,7 @@ import os
 import time
 import wave
 from typing import Dict, Optional
+from aiortc import RTCDataChannel
 
 import numpy as np
 from elevenlabs.client import AsyncElevenLabs
@@ -35,7 +36,7 @@ SPEECH_ZCR_MAX = 0.3
 class AudioProcessor:
     __slots__ = [
         "session_id",
-        "websocket",
+        "data_channel",
         "openai_client",
         "elevenlabs_client",
         "audio_buffer",
@@ -54,9 +55,9 @@ class AudioProcessor:
         "audio_array_cache",
     ]
 
-    def __init__(self, session_id: str, websocket: WebSocket):
+    def __init__(self, session_id: str, channel: Optional[RTCDataChannel] = None):
         self.session_id = session_id
-        self.websocket = websocket
+        self.data_channel = channel
         self.openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.elevenlabs_client = AsyncElevenLabs(
             api_key=os.getenv("ELEVENLABS_API_KEY")
@@ -82,6 +83,7 @@ class AudioProcessor:
 
     async def add_audio_chunk(self, audio_data: bytes) -> Optional[bytes]:
         # Fast early returns
+        # print(self.is_speaking, self._in_response_cooldown(), len(audio_data))
         if self.is_speaking or self._in_response_cooldown() or len(audio_data) == 0:
             return None
 
@@ -92,6 +94,7 @@ class AudioProcessor:
         return None
 
     def _should_process_audio(self) -> bool:
+        # return True
         buffer_len = len(self.audio_buffer)
 
         # Fast buffer size checks
@@ -211,16 +214,20 @@ class AudioProcessor:
             if self._is_duplicate_transcript(transcript):
                 return None
 
+            transcript_event = {"type": "transcript", "data": transcript}
+            if self.data_channel:
+                self.data_channel.send(json.dumps(transcript_event))
+
             # Send transcription immediately (don't await)
-            asyncio.create_task(
-                self.websocket.send_json(
-                    {
-                        "type": "transcription",
-                        "transcription": transcript,
-                        "timestamp": time.time(),
-                    }
-                )
-            )
+            # asyncio.create_task(
+            #     self.websocket.send_json(
+            #         {
+            #             "type": "transcription",
+            #             "transcription": transcript,
+            #             "timestamp": time.time(),
+            #         }
+            #     )
+            # )
 
             # Update state
             self.conversation_history.append(
@@ -293,6 +300,7 @@ class AudioProcessor:
     async def _generate_ai_response(self, text: str) -> str:
         try:
             # Minimal context for speed
+            # return "hellow"
             messages = [{"role": "system", "content": "help ful ai assistant"}]
 
             # Only last 2 exchanges for context
@@ -340,55 +348,55 @@ class AudioProcessor:
             return b""
 
 
-@ws_router_audio.websocket("/audio/{session_id}")
-async def audio_streaming(websocket: WebSocket, session_id: str):
-    if not session_id:
-        await websocket.close(code=4000, reason="No session_id provided")
-        return
+# @ws_router_audio.websocket("/audio/{session_id}")
+# async def audio_streaming(websocket: WebSocket, session_id: str):
+#     if not session_id:
+#         await websocket.close(code=4000, reason="No session_id provided")
+#         return
 
-    await websocket.accept()
+#     await websocket.accept()
 
-    audio_processor = AudioProcessor(session_id, websocket)
-    audio_sessions[session_id] = {
-        "websocket": websocket,
-        "processor": audio_processor,
-        "connected_at": time.time(),
-        "last_activity": time.time(),
-    }
+# audio_processor = AudioProcessor(session_id, websocket)
+# audio_sessions[session_id] = {
+#     "websocket": websocket,
+#     "processor": audio_processor,
+#     "connected_at": time.time(),
+#     "last_activity": time.time(),
+# }
 
-    try:
-        while True:
-            data = await websocket.receive()
+#     try:
+#         while True:
+#             data = await websocket.receive()
 
-            if data["type"] == "websocket.receive":
-                if "bytes" in data:
-                    audio_sessions[session_id]["last_activity"] = time.time()
+#             if data["type"] == "websocket.receive":
+#                 if "bytes" in data:
+#                     audio_sessions[session_id]["last_activity"] = time.time()
 
-                    response_audio = await audio_processor.add_audio_chunk(
-                        data["bytes"]
-                    )
+#                     response_audio = await audio_processor.add_audio_chunk(
+#                         data["bytes"]
+#                     )
 
-                    if response_audio:
-                        try:
-                            await websocket.send_bytes(response_audio)
-                        except RuntimeError:
-                            break
+#                     if response_audio:
+#                         try:
+#                             await websocket.send_bytes(response_audio)
+#                         except RuntimeError:
+#                             break
 
-                elif "text" in data:
-                    try:
-                        message = json.loads(data["text"])
-                        await handle_audio_control_message(
-                            websocket, message, session_id
-                        )
-                    except json.JSONDecodeError:
-                        pass
+#                 elif "text" in data:
+#                     try:
+#                         message = json.loads(data["text"])
+#                         await handle_audio_control_message(
+#                             websocket, message, session_id
+#                         )
+#                     except json.JSONDecodeError:
+#                         pass
 
-    except WebSocketDisconnect:
-        pass
-    except Exception as e:
-        logger.error(f"Audio streaming error {session_id}: {e}")
-    finally:
-        audio_sessions.pop(session_id, None)
+#     except WebSocketDisconnect:
+#         pass
+#     except Exception as e:
+#         logger.error(f"Audio streaming error {session_id}: {e}")
+#     finally:
+#         audio_sessions.pop(session_id, None)
 
 
 async def handle_audio_control_message(

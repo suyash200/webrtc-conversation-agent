@@ -1,519 +1,651 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <title>WebRTC Client with Audio Streaming</title>
-    <style>
-      body { font-family: Arial, sans-serif; margin: 20px; }
-      .container { max-width: 800px; margin: 0 auto; }
-      .section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 5px; }
-      .status { height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: #f9f9f9; }
-      button { padding: 10px 15px; margin: 5px; font-size: 16px; }
-      button:disabled { opacity: 0.5; cursor: not-allowed; }
-      .controls { margin: 10px 0; }
-      .audio-controls { display: flex; gap: 10px; align-items: center; }
-      .volume-meter { width: 200px; height: 20px; border: 1px solid #ccc; background: #f0f0f0; }
-      .volume-bar { height: 100%; background: #4CAF50; transition: width 0.1s; }
-      #audioPlayback { width: 100%; margin: 10px 0; }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <h1>WebRTC Client with Audio Streaming</h1>
-      
-      <div class="section">
-        <h3>WebRTC Connection</h3>
-        <div class="controls">
-          <button id="startConnection">Start Connection</button>
-          <button id="stopConnection" disabled>Stop Connection</button>
-        </div>
-        <div>
-          <strong>Connection Status:</strong> <span id="connectionStatus">Disconnected</span>
-        </div>
-      </div>
 
-      <div class="section">
-        <h3>Audio Controls</h3>
-        <div class="audio-controls">
-          <button id="startAudio" disabled>Start Audio</button>
-          <button id="stopAudio" disabled>Stop Audio</button>
-          <button id="muteToggle" disabled>Mute</button>
-        </div>
-        <div class="controls">
-          <label>Volume: <input type="range" id="volumeSlider" min="0" max="100" value="50"></label>
-        </div>
-        <div>
-          <strong>Audio Level:</strong>
-          <div class="volume-meter">
-            <div class="volume-bar" id="volumeBar"></div>
-          </div>
-        </div>
-        <audio id="audioPlayback" controls style="display: none;"></audio>
-      </div>
+<head>
+  <title>WebRTC Client with Audio Streaming</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
 
-      <div class="section">
-        <h3>Status Log</h3>
-        <div id="status" class="status"></div>
-        <button onclick="clearStatus()">Clear Log</button>
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .section {
+      margin: 20px 0;
+      padding: 15px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+
+    .status {
+      height: 200px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      padding: 10px;
+      background: #f9f9f9;
+    }
+
+    button {
+      padding: 10px 15px;
+      margin: 5px;
+      font-size: 16px;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .controls {
+      margin: 10px 0;
+    }
+
+    .audio-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .volume-meter {
+      width: 200px;
+      height: 20px;
+      border: 1px solid #ccc;
+      background: #f0f0f0;
+    }
+
+    .volume-bar {
+      height: 100%;
+      background: #4CAF50;
+      transition: width 0.1s;
+    }
+
+    #audioPlayback {
+      width: 100%;
+      margin: 10px 0;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>WebRTC Client with Audio Streaming</h1>
+
+    <div class="section">
+      <h3>WebRTC Connection</h3>
+      <div class="controls">
+        <button id="startConnection">Start Connection</button>
+        <button id="stopConnection" disabled>Stop Connection</button>
+      </div>
+      <div>
+        <strong>Connection Status:</strong> <span id="connectionStatus">Disconnected</span>
       </div>
     </div>
 
-    <script>
-      const sessionId = "test-session-" + Date.now();
-      const signalingUrl = `ws://localhost:8000/ws/signaling/${sessionId}`;
-      const audioUrl = `ws://localhost:8000/ws/audio/${sessionId}`;
-      
-      let signalingSocket;
-      let audioSocket;
-      let peerConnection;
-      let localStream;
-      let audioContext;
-      let analyser;
-      let dataArray;
-      let isAudioStreaming = false;
-      let isMuted = false;
+    <div class="section">
+      <h3>Audio Controls</h3>
+      <div class="audio-controls">
+        <button id="startAudio" disabled>Start Audio</button>
+        <button id="stopAudio" disabled>Stop Audio</button>
+        <button id="muteToggle" disabled>Mute</button>
+      </div>
+      <div class="controls">
+        <label>Volume: <input type="range" id="volumeSlider" min="0" max="100" value="50"></label>
+      </div>
+      <div>
+        <strong>Audio Level:</strong>
+        <div class="volume-meter">
+          <div class="volume-bar" id="volumeBar"></div>
+        </div>
+      </div>
+      <audio id="audioPlayback" controls style="display: none;"></audio>
+    </div>
 
-      // UI elements
-      const statusDiv = document.getElementById("status");
-      const connectionStatus = document.getElementById("connectionStatus");
-      const startConnectionBtn = document.getElementById("startConnection");
-      const stopConnectionBtn = document.getElementById("stopConnection");
-      const startAudioBtn = document.getElementById("startAudio");
-      const stopAudioBtn = document.getElementById("stopAudio");
-      const muteToggleBtn = document.getElementById("muteToggle");
-      const volumeSlider = document.getElementById("volumeSlider");
-      const volumeBar = document.getElementById("volumeBar");
-      const audioPlayback = document.getElementById("audioPlayback");
+    <div class="section">
+      <h3>Status Log</h3>
+      <div id="status" class="status"></div>
+      <button onclick="clearStatus()">Clear Log</button>
+    </div>
+  </div>
 
-      function updateStatus(message) {
-        const timestamp = new Date().toLocaleTimeString();
-        statusDiv.innerHTML += `<p>[${timestamp}] ${message}</p>`;
-        statusDiv.scrollTop = statusDiv.scrollHeight;
-        console.log(message);
-      }
+  <script>
+    const sessionId = "test-session-" + Date.now();
+    const signalingUrl = `ws://localhost:8000/ws/signaling/${sessionId}`;
+    const audioUrl = `ws://localhost:8000/ws/audio/${sessionId}`;
 
-      function updateConnectionStatus(status) {
-        connectionStatus.textContent = status;
-        connectionStatus.style.color = status === "Connected" ? "green" : 
-                                      status === "Connecting" ? "orange" : "red";
-      }
+    let signalingSocket;
+    let audioSocket;
+    /** @type {RTCPeerConnection} */
+    let peerConnection;
+    /** @type {RTCDataChannel} */
+    let dataChannel;
+    /** @type {MediaStream} */
+    let localStream;
+    let audioContext;
+    let analyser;
+    let dataArray;
+    let isAudioStreaming = false;
+    let isMuted = false;
 
-      function clearStatus() {
-        statusDiv.innerHTML = "";
-      }
+    // UI elements
+    const statusDiv = document.getElementById("status");
+    const connectionStatus = document.getElementById("connectionStatus");
+    const startConnectionBtn = document.getElementById("startConnection");
+    const stopConnectionBtn = document.getElementById("stopConnection");
+    const startAudioBtn = document.getElementById("startAudio");
+    const stopAudioBtn = document.getElementById("stopAudio");
+    const muteToggleBtn = document.getElementById("muteToggle");
+    const volumeSlider = document.getElementById("volumeSlider");
+    const volumeBar = document.getElementById("volumeBar");
+    const audioPlayback = document.getElementById("audioPlayback");
 
-      // WebRTC Connection Management
-      startConnectionBtn.onclick = async () => {
-        await startConnection();
-      };
+    function updateStatus(message) {
+      const timestamp = new Date().toLocaleTimeString();
+      statusDiv.innerHTML += `<p>[${timestamp}] ${message}</p>`;
+      statusDiv.scrollTop = statusDiv.scrollHeight;
+      console.log(message);
+    }
 
-      stopConnectionBtn.onclick = async () => {
-        await stopConnection();
-      };
+    function updateConnectionStatus(status) {
+      connectionStatus.textContent = status;
+      connectionStatus.style.color = status === "Connected" ? "green" :
+        status === "Connecting" ? "orange" : "red";
+    }
 
-      async function startConnection() {
-        try {
-          updateStatus("Starting WebRTC connection...");
-          updateConnectionStatus("Connecting");
-          
-          // Start signaling WebSocket
-          signalingSocket = new WebSocket(signalingUrl);
+    function clearStatus() {
+      statusDiv.innerHTML = "";
+    }
 
-          signalingSocket.onopen = async () => {
-            updateStatus("Signaling WebSocket connected");
+    // WebRTC Connection Management
+    startConnectionBtn.onclick = async () => {
+      await startConnection();
+    };
 
-            // Create RTCPeerConnection
-            peerConnection = new RTCPeerConnection({
-              iceServers: [
-                { urls: "stun:stun.l.google.com:19302" },
-                { urls: "stun:stun1.l.google.com:19302" }
-              ],
-            });
+    stopConnectionBtn.onclick = async () => {
+      await stopConnection();
+    };
 
-            // ICE candidate handling
-            peerConnection.onicecandidate = (event) => {
-              if (event.candidate) {
-                updateStatus("Sending ICE candidate");
-                signalingSocket.send(JSON.stringify({
-                  type: "ice",
-                  candidate: {
-                    candidate: event.candidate.candidate,
-                    sdpMid: event.candidate.sdpMid,
-                    sdpMLineIndex: event.candidate.sdpMLineIndex,
-                  },
-                  session_id: sessionId,
-                }));
-              }
-            };
+    async function startConnection() {
+      try {
+        updateStatus("Starting WebRTC connection...");
+        updateConnectionStatus("Connecting");
 
-            // Connection state monitoring
-            peerConnection.onconnectionstatechange = () => {
-              const state = peerConnection.connectionState;
-              updateStatus(`WebRTC connection state: ${state}`);
-              
-              if (state === "connected") {
-                updateConnectionStatus("Connected");
-                startConnectionBtn.disabled = true;
-                stopConnectionBtn.disabled = false;
-                startAudioBtn.disabled = false;
-              } else if (state === "failed" || state === "disconnected") {
-                updateConnectionStatus("Disconnected");
-                stopConnection();
-              }
-            };
+        // Start signaling WebSocket
+        signalingSocket = new WebSocket(signalingUrl);
 
-            // Handle signaling messages
-            signalingSocket.onmessage = async (event) => {
-              try {
-                const msg = JSON.parse(event.data);
-                await handleSignalingMessage(msg);
-              } catch (error) {
-                updateStatus(`Error parsing signaling message: ${error.message}`);
-              }
-            };
+        signalingSocket.onopen = async () => {
+          updateStatus("Signaling WebSocket connected");
 
-            signalingSocket.onerror = (error) => {
-              updateStatus(`Signaling WebSocket error: ${error}`);
-            };
+          // Create RTCPeerConnection
+          peerConnection = new RTCPeerConnection({
+            iceServers: [
+              { urls: "stun:stun.l.google.com:19302" },
+              { urls: "stun:stun1.l.google.com:19302" }
+            ],
+          });
 
-            signalingSocket.onclose = () => {
-              updateStatus("Signaling WebSocket closed");
+          // ICE candidate handling
+          peerConnection.onicecandidate = (event) => {
+            if (event.candidate) {
+              updateStatus("Sending ICE candidate");
+              signalingSocket.send(JSON.stringify({
+                type: "ice",
+                candidate: {
+                  candidate: event.candidate.candidate,
+                  sdpMid: event.candidate.sdpMid,
+                  sdpMLineIndex: event.candidate.sdpMLineIndex,
+                },
+                session_id: sessionId,
+              }));
+            }
+          };
+
+          // Connection state monitoring
+          peerConnection.onconnectionstatechange = () => {
+            const state = peerConnection.connectionState;
+            updateStatus(`WebRTC connection state: ${state}`);
+
+            if (state === "connected") {
+              updateConnectionStatus("Connected");
+              startConnectionBtn.disabled = true;
+              stopConnectionBtn.disabled = false;
+              startAudioBtn.disabled = false;
+            } else if (state === "failed" || state === "disconnected") {
               updateConnectionStatus("Disconnected");
-            };
-
-            // Get user media and create offer
-            await setupMediaAndCreateOffer();
-          };
-
-        } catch (error) {
-          updateStatus(`Error starting connection: ${error.message}`);
-          updateConnectionStatus("Error");
-        }
-      }
-
-      async function setupMediaAndCreateOffer() {
-        try {
-          // Get user media
-          localStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-              sampleRate: 16000
-            }
-          });
-
-          updateStatus("Got user media (microphone access)");
-
-          // Add tracks to peer connection
-          localStream.getTracks().forEach((track) => {
-            peerConnection.addTrack(track, localStream);
-          });
-
-          // Set up audio analysis
-          setupAudioAnalysis();
-
-          // Create and send offer
-          const offer = await peerConnection.createOffer();
-          await peerConnection.setLocalDescription(offer);
-
-          signalingSocket.send(JSON.stringify({
-            type: "offer",
-            sdp: offer.sdp,
-            session_id: sessionId,
-          }));
-
-          updateStatus("Sent SDP offer to server");
-
-        } catch (error) {
-          updateStatus(`Failed to setup media: ${error.message}`);
-        }
-      }
-
-      async function handleSignalingMessage(msg) {
-        switch (msg.type) {
-          case "answer":
-            updateStatus("Received SDP answer from server");
-            await peerConnection.setRemoteDescription(
-              new RTCSessionDescription({
-                type: "answer",
-                sdp: msg.sdp,
-              })
-            );
-            break;
-
-          case "ice":
-            updateStatus("Received ICE candidate from server");
-            if (msg.candidate) {
-              await peerConnection.addIceCandidate(
-                new RTCIceCandidate(msg.candidate)
-              );
-            }
-            break;
-
-          case "connection_state":
-            updateStatus(`Server connection state: ${msg.state}`);
-            break;
-
-          case "error":
-            updateStatus(`Server error: ${msg.message}`);
-            break;
-
-          case "pong":
-            updateStatus("Received pong from server");
-            break;
-
-          default:
-            updateStatus(`Unknown signaling message: ${msg.type}`);
-        }
-      }
-
-      async function stopConnection() {
-        updateStatus("Stopping connection...");
-        
-        await stopAudioStreaming();
-        
-        if (localStream) {
-          localStream.getTracks().forEach(track => track.stop());
-          localStream = null;
-        }
-        
-        if (peerConnection) {
-          peerConnection.close();
-          peerConnection = null;
-        }
-        
-        if (signalingSocket) {
-          signalingSocket.close();
-          signalingSocket = null;
-        }
-        
-        updateConnectionStatus("Disconnected");
-        startConnectionBtn.disabled = false;
-        stopConnectionBtn.disabled = true;
-        startAudioBtn.disabled = true;
-        stopAudioBtn.disabled = true;
-        muteToggleBtn.disabled = true;
-        
-        updateStatus("Connection stopped");
-      }
-
-      // Audio Streaming Management
-      startAudioBtn.onclick = async () => {
-        await startAudioStreaming();
-      };
-
-      stopAudioBtn.onclick = async () => {
-        await stopAudioStreaming();
-      };
-
-      async function startAudioStreaming() {
-        try {
-          updateStatus("Starting audio streaming...");
-          
-          // Connect to audio WebSocket
-          audioSocket = new WebSocket(audioUrl);
-          
-          audioSocket.onopen = () => {
-            updateStatus("Audio WebSocket connected");
-            isAudioStreaming = true;
-            startAudioBtn.disabled = true;
-            stopAudioBtn.disabled = false;
-            muteToggleBtn.disabled = false;
-            
-            // Start sending audio data
-            startAudioCapture();
-          };
-          
-          audioSocket.onmessage = async (event) => {
-            console.log("the event is ",event.data)
-            if (event.data instanceof Blob) {
-              // Received audio response from server
-              updateStatus("Received audio response from server");
-              await playAudioResponse(event.data);
-            } else {
-              // Handle text messages
-              try {
-                const msg = JSON.parse(event.data);
-                if( msg.type =="audio"){
-                handleAudioMessage(msg)}
-                else if(msg.type=="transcription"){
-                  console.log("transcription receoved",event)
-                }
-              } catch (error) {
-                updateStatus(`Error parsing audio message: ${error.message}`);
-              }
+              stopConnection();
             }
           };
-          
-          audioSocket.onerror = (error) => {
-            updateStatus(`Audio WebSocket error: ${error}`);
-          };
-          
-          audioSocket.onclose = () => {
-            updateStatus("Audio WebSocket closed");
-            isAudioStreaming = false;
-            startAudioBtn.disabled = false;
-            stopAudioBtn.disabled = true;
-            muteToggleBtn.disabled = true;
-          };
-          
-        } catch (error) {
-          updateStatus(`Error starting audio streaming: ${error.message}`);
-        }
-      }
 
-      async function stopAudioStreaming() {
-        updateStatus("Stopping audio streaming...");
-        
-        isAudioStreaming = false;
-        
-        if (audioSocket) {
-          audioSocket.close();
-          audioSocket = null;
-        }
-        
-        startAudioBtn.disabled = false;
-        stopAudioBtn.disabled = true;
-        muteToggleBtn.disabled = true;
-        
-        updateStatus("Audio streaming stopped");
-      }
+          // Handle signaling messages
+          signalingSocket.onmessage = async (event) => {
+            try {
+              const msg = JSON.parse(event.data);
+              await handleSignalingMessage(msg);
+            } catch (error) {
+              updateStatus(`Error parsing signaling message: ${error.message}`);
+            }
+          };
 
-      function startAudioCapture() {
-        if (!localStream || !audioSocket || !isAudioStreaming) return;
-        
-        // Create audio processor
-        const audioContext = new AudioContext({ sampleRate: 16000 });
-        const source = audioContext.createMediaStreamSource(localStream);
-        const processor = audioContext.createScriptProcessor(1024, 1, 1);
-        
-        processor.onaudioprocess = (event) => {
-          if (!isAudioStreaming || isMuted) return;
-          
-          const inputBuffer = event.inputBuffer;
-          const inputData = inputBuffer.getChannelData(0);
-          
-          // Convert float32 to int16
-          const int16Array = new Int16Array(inputData.length);
-          for (let i = 0; i < inputData.length; i++) {
-            int16Array[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
-          }
-          
-          // Send audio data to server
-          if (audioSocket && audioSocket.readyState === WebSocket.OPEN) {
-            audioSocket.send(int16Array.buffer);
-          }
+          signalingSocket.onerror = (error) => {
+            updateStatus(`Signaling WebSocket error: ${error}`);
+          };
+
+          signalingSocket.onclose = () => {
+            updateStatus("Signaling WebSocket closed");
+            updateConnectionStatus("Disconnected");
+          };
+
+          // Get user media and create offer
+          await setupMediaAndCreateOffer();
         };
-        
-        source.connect(processor);
-        processor.connect(audioContext.destination);
+
+      } catch (error) {
+        updateStatus(`Error starting connection: ${error.message}`);
+        updateConnectionStatus("Error");
+      }
+    }
+
+    async function setupMediaAndCreateOffer() {
+      try {
+        dataChannel = peerConnection.createDataChannel("audio", {
+          ordered: true,        // Ensure packets arrive in order
+          maxRetransmits: 3,    // Retry failed packets
+          // OR maxPacketLifeTime: 100  // Alternative to maxRetransmits
+        });
+        // Get user media
+        localStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 16000
+          }
+        });
+
+        updateStatus("Got user media (microphone access)");
+
+        // Add tracks to peer connection
+        localStream.getTracks().forEach((track) => {
+          peerConnection.addTrack(track, localStream);
+        });
+
+        // Set up audio analysis
+        setupAudioAnalysis();
+
+        // Create and send offer
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+
+        signalingSocket.send(JSON.stringify({
+          type: "offer",
+          sdp: offer.sdp,
+          session_id: sessionId,
+        }));
+
+        updateStatus("Sent SDP offer to server");
+
+        dataChannel.onopen = () => {
+          updateStatus("DataChannel is open");
+        };
+
+        dataChannel.onmessage = async (event) => {
+          updateStatus("Received message over DataChannel: " + event.data);
+          console.log("Blob type:", event.data);
+          const blob = new Blob([event.data], { type: "audio/wav" }); // or "audio/mp3"
+          playAudioResponse(blob);
+
+
+        };
+
+        dataChannel.onerror = (error) => {
+          updateStatus("DataChannel error: " + error.message);
+        };
+
+        dataChannel.onclose = () => {
+          updateStatus("DataChannel closed");
+        };
+
+
+      } catch (error) {
+        updateStatus(`Failed to setup media: ${error.message}`);
+      }
+    }
+
+    async function handleSignalingMessage(msg) {
+      switch (msg.type) {
+        case "answer":
+          updateStatus("Received SDP answer from server");
+          await peerConnection.setRemoteDescription(
+            new RTCSessionDescription({
+              type: "answer",
+              sdp: msg.sdp,
+            })
+          );
+          break;
+
+        case "ice":
+          updateStatus("Received ICE candidate from server");
+          if (msg.candidate) {
+            await peerConnection.addIceCandidate(
+              new RTCIceCandidate(msg.candidate)
+            );
+          }
+          break;
+
+        case "connection_state":
+          updateStatus(`Server connection state: ${msg.state}`);
+          break;
+
+        case "error":
+          updateStatus(`Server error: ${msg.message}`);
+          break;
+
+        case "pong":
+          updateStatus("Received pong from server");
+          break;
+
+        default:
+          updateStatus(`Unknown signaling message: ${msg.type}`);
+      }
+    }
+
+    async function stopConnection() {
+      updateStatus("Stopping connection...");
+
+      await stopAudioStreaming();
+
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
       }
 
-      async function playAudioResponse(audioBlob) {
-        try {
-          const audioUrl = URL.createObjectURL(audioBlob);
-          audioPlayback.src = audioUrl;
-          audioPlayback.style.display = "block";
-          await audioPlayback.play();
-          updateStatus("Playing audio response");
-        } catch (error) {
-          updateStatus(`Error playing audio response: ${error.message}`);
-        }
+      if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
       }
 
-      function handleAudioMessage(msg) {
-        switch (msg.type) {
-          case "config_ack":
-            updateStatus("Audio config acknowledged");
-            break;
-          case "pong":
-            updateStatus("Audio pong received");
-            break;
-          default:
-            updateStatus(`Unknown audio message: ${msg.type}`);
-        }
+      if (signalingSocket) {
+        signalingSocket.close();
+        signalingSocket = null;
       }
 
-      // Audio Analysis and Visualization
-      function setupAudioAnalysis() {
-        if (!localStream) return;
-        
-        audioContext = new AudioContext();
-        analyser = audioContext.createAnalyser();
-        const source = audioContext.createMediaStreamSource(localStream);
-        
-        analyser.fftSize = 256;
-        const bufferLength = analyser.frequencyBinCount;
-        dataArray = new Uint8Array(bufferLength);
-        
-        source.connect(analyser);
-        
-        // Start volume monitoring
-        updateVolumeLevel();
-      }
-
-      function updateVolumeLevel() {
-        if (!analyser || !dataArray) return;
-        
-        analyser.getByteFrequencyData(dataArray);
-        
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-          sum += dataArray[i];
-        }
-        const average = sum / dataArray.length;
-        const volume = (average / 255) * 100;
-        
-        volumeBar.style.width = volume + "%";
-        
-        if (isAudioStreaming) {
-          requestAnimationFrame(updateVolumeLevel);
-        }
-      }
-
-      // Mute toggle
-      muteToggleBtn.onclick = () => {
-        isMuted = !isMuted;
-        muteToggleBtn.textContent = isMuted ? "Unmute" : "Mute";
-        muteToggleBtn.style.backgroundColor = isMuted ? "#f44336" : "";
-        
-        if (audioSocket && audioSocket.readyState === WebSocket.OPEN) {
-          audioSocket.send(JSON.stringify({
-            type: "mute",
-            muted: isMuted,
-            session_id: sessionId
-          }));
-        }
-        
-        updateStatus(isMuted ? "Microphone muted" : "Microphone unmuted");
-      };
-
-      // Volume control
-      volumeSlider.oninput = (e) => {
-        const volume = e.target.value / 100;
-        audioPlayback.volume = volume;
-      };
-
-      // Periodic ping for both connections
-      setInterval(() => {
-        if (signalingSocket && signalingSocket.readyState === WebSocket.OPEN) {
-          signalingSocket.send(JSON.stringify({
-            type: "ping",
-            session_id: sessionId,
-          }));
-        }
-        
-        if (audioSocket && audioSocket.readyState === WebSocket.OPEN) {
-          audioSocket.send(JSON.stringify({
-            type: "ping",
-            session_id: sessionId,
-          }));
-        }
-      }, 30000);
-
-      // Initialize
-      updateStatus("WebRTC Client initialized");
       updateConnectionStatus("Disconnected");
-    </script>
-  </body>
+      startConnectionBtn.disabled = false;
+      stopConnectionBtn.disabled = true;
+      startAudioBtn.disabled = true;
+      stopAudioBtn.disabled = true;
+      muteToggleBtn.disabled = true;
+
+      updateStatus("Connection stopped");
+    }
+
+    // Audio Streaming Management
+    startAudioBtn.onclick = async () => {
+      await startAudioStreaming();
+    };
+
+    stopAudioBtn.onclick = async () => {
+      await stopAudioStreaming();
+    };
+
+    async function startAudioStreaming() {
+      try {
+        updateStatus("Starting audio streaming...");
+
+        if (!dataChannel) {
+          updateStatus("DataChannel not ready");
+          return null
+        }
+
+        isAudioStreaming = true;
+        startAudioBtn.disabled = true;
+        stopAudioBtn.disabled = false;
+        muteToggleBtn.disabled = false;
+
+        // Send config message through DataChannel
+        dataChannel.send(JSON.stringify({
+          type: "audio_config",
+          sampleRate: 16000,
+          channels: 1
+        }));
+        startAudioCapture()
+        // Connect to audio WebSocket
+        // audioSocket = new WebSocket(audioUrl);
+
+        // audioSocket.onopen = () => {
+        //   updateStatus("Audio WebSocket connected");
+        //   isAudioStreaming = true;
+        //   startAudioBtn.disabled = true;
+        //   stopAudioBtn.disabled = false;
+        //   muteToggleBtn.disabled = false;
+
+        //   // Start sending audio data
+        //   startAudioCapture();
+        // };
+
+        // audioSocket.onmessage = async (event) => {
+        //   console.log("the event is ",event.data)
+        //   if (event.data instanceof Blob) {
+        //     // Received audio response from server
+        //     updateStatus("Received audio response from server");
+        //     await playAudioResponse(event.data);
+        //   } else {
+        //     // Handle text messages
+        //     try {
+        //       const msg = JSON.parse(event.data);
+        //       if( msg.type =="audio"){
+        //       handleAudioMessage(msg)}
+        //       else if(msg.type=="transcription"){
+        //         console.log("transcription receoved",event)
+        //       }
+        //     } catch (error) {
+        //       updateStatus(`Error parsing audio message: ${error.message}`);
+        //     }
+        //   }
+        // };
+
+        // audioSocket.onerror = (error) => {
+        //   updateStatus(`Audio WebSocket error: ${error}`);
+        // };
+
+        // audioSocket.onclose = () => {
+        //   updateStatus("Audio WebSocket closed");
+        //   isAudioStreaming = false;
+        //   startAudioBtn.disabled = false;
+        //   stopAudioBtn.disabled = true;
+        //   muteToggleBtn.disabled = true;
+        // };
+
+      } catch (error) {
+        updateStatus(`Error starting audio streaming: ${error.message}`);
+      }
+    }
+
+    function downsampleBuffer(buffer, inputSampleRate, outputSampleRate) {
+      if (outputSampleRate === inputSampleRate) return buffer;
+
+      const sampleRateRatio = inputSampleRate / outputSampleRate;
+      const newLength = Math.round(buffer.length / sampleRateRatio);
+      const result = new Int16Array(newLength);
+
+      for (let i = 0; i < newLength; i++) {
+        const pos = Math.floor(i * sampleRateRatio);
+        result[i] = Math.max(-32768, Math.min(32767, buffer[pos] * 32768));
+      }
+
+      return result;
+    }
+
+
+    async function stopAudioStreaming() {
+      updateStatus("Stopping audio streaming...");
+
+      isAudioStreaming = false;
+
+      if (audioSocket) {
+        audioSocket.close();
+        audioSocket = null;
+      }
+
+      startAudioBtn.disabled = false;
+      stopAudioBtn.disabled = true;
+      muteToggleBtn.disabled = true;
+
+      updateStatus("Audio streaming stopped");
+    }
+
+    function startAudioCapture() {
+      if (!localStream || !dataChannel || !isAudioStreaming) return;
+
+      console.log("Sample rate:", audioContext.sampleRate);
+      //       Create audio processor
+      // Convert to a transferable buffer
+      // const float32Array = new Float32Array(channelData); // clone if needed
+      // const bufferToSend = float32Array.buffer; // Get the ArrayBuffer
+      // console.log("the stream is ", audioBuffer,channelData)
+      // Send over the dataChannel
+      // console.log(bufferToSend)
+      // dataChannel.send(bufferToSend);
+      const source = audioContext.createMediaStreamSource(localStream);
+      const processor = audioContext.createScriptProcessor(1024, 1, 1);
+
+      processor.onaudioprocess = (event) => {
+        if (!isAudioStreaming || isMuted) return;
+
+        const inputBuffer = event.inputBuffer;
+        const inputData = inputBuffer.getChannelData(0);
+
+        // Convert float32 to int16
+        const int16Array = new Int16Array(inputData.length);
+        for (let i = 0; i < inputData.length; i++) {
+          int16Array[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+        }
+
+        const downsampled = downsampleBuffer(inputData, audioContext.sampleRate, 16000);
+
+        // Send as raw PCM Int16
+        if (dataChannel && dataChannel.readyState === "open") {
+          dataChannel.send(downsampled.buffer); // send ArrayBuffer
+        }
+        // if (audioSocket && audioSocket.readyState === WebSocket.OPEN) {
+        //   // audioSocket.send(int16Array.buffer);
+
+        // }
+      };
+
+      source.connect(processor);
+      processor.connect(audioContext.destination);
+    }
+
+    async function playAudioResponse(audioBlob) {
+      try {
+        const audioUrl = URL.createObjectURL(audioBlob);
+        audioPlayback.src = audioUrl;
+        audioPlayback.style.display = "block";
+        await audioPlayback.play();
+        updateStatus("Playing audio response");
+      } catch (error) {
+        updateStatus(`Error playing audio response: ${error.message}`);
+      }
+    }
+
+    function handleAudioMessage(msg) {
+      switch (msg.type) {
+        case "config_ack":
+          updateStatus("Audio config acknowledged");
+          break;
+        case "pong":
+          updateStatus("Audio pong received");
+          break;
+        default:
+          updateStatus(`Unknown audio message: ${msg.type}`);
+      }
+    }
+
+    // Audio Analysis and Visualization
+    function setupAudioAnalysis() {
+      if (!localStream) return;
+
+      audioContext = new AudioContext();
+      analyser = audioContext.createAnalyser();
+      const source = audioContext.createMediaStreamSource(localStream);
+
+      analyser.fftSize = 256;
+      const bufferLength = analyser.frequencyBinCount;
+      dataArray = new Uint8Array(bufferLength);
+
+      source.connect(analyser);
+
+      // Start volume monitoring
+      updateVolumeLevel();
+    }
+
+    function updateVolumeLevel() {
+      if (!analyser || !dataArray) return;
+
+      analyser.getByteFrequencyData(dataArray);
+
+      let sum = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        sum += dataArray[i];
+      }
+      const average = sum / dataArray.length;
+      const volume = (average / 255) * 100;
+
+      volumeBar.style.width = volume + "%";
+
+      if (isAudioStreaming) {
+        requestAnimationFrame(updateVolumeLevel);
+      }
+    }
+
+    // Mute toggle
+    muteToggleBtn.onclick = () => {
+      isMuted = !isMuted;
+      muteToggleBtn.textContent = isMuted ? "Unmute" : "Mute";
+      muteToggleBtn.style.backgroundColor = isMuted ? "#f44336" : "";
+
+      if (audioSocket && audioSocket.readyState === WebSocket.OPEN) {
+        audioSocket.send(JSON.stringify({
+          type: "mute",
+          muted: isMuted,
+          session_id: sessionId
+        }));
+      }
+
+      updateStatus(isMuted ? "Microphone muted" : "Microphone unmuted");
+    };
+
+    // Volume control
+    volumeSlider.oninput = (e) => {
+      const volume = e.target.value / 100;
+      audioPlayback.volume = volume;
+    };
+
+    // Periodic ping for both connections
+    setInterval(() => {
+      if (signalingSocket && signalingSocket.readyState === WebSocket.OPEN) {
+        signalingSocket.send(JSON.stringify({
+          type: "ping",
+          session_id: sessionId,
+        }));
+      }
+
+      if (audioSocket && audioSocket.readyState === WebSocket.OPEN) {
+        audioSocket.send(JSON.stringify({
+          type: "ping",
+          session_id: sessionId,
+        }));
+      }
+    }, 30000);
+
+    // Initialize
+    updateStatus("WebRTC Client initialized");
+    updateConnectionStatus("Disconnected");
+  </script>
+</body>
+
 </html>

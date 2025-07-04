@@ -2,11 +2,13 @@ import json
 import asyncio
 from fastapi import WebSocket, WebSocketDisconnect
 from typing import Dict, Optional
+from aiortc import AudioStreamTrack, RTCDataChannel, events
 from fastapi import APIRouter
 import time
 
 from app.util.peer_connection_util import create_peer_connection
 from app.util import handle_signaling_offer, handle_answer, handle_ice_candidate
+from .audio_controller import AudioProcessor
 
 ws_router_v2 = APIRouter(prefix="/ws")
 
@@ -34,6 +36,7 @@ async def signaling(websocket: WebSocket, session_id: str):
     active_sessions[session_id] = {
         "websocket": websocket,
         "peer_connection": peer_conn,
+        "audio_service": None,
         "status": "connecting",
         "last_activity": time.time(),
     }
@@ -48,6 +51,52 @@ async def signaling(websocket: WebSocket, session_id: str):
         async for data in websocket.iter_text():
             message = json.loads(data)
             msg_type = message.get("type")
+
+            @peer_conn.on("track")
+            async def on_track(track: AudioStreamTrack):
+                print(f"Track received: kind={track.kind}", track)
+                if track.kind == "audio":
+                    print("Audio track received")
+                    frame = await track.recv()
+                    print(frame.dts)
+
+            @peer_conn.on("datachannel")
+            def on_data_channel_setup(channel: RTCDataChannel):
+                print(
+                    f"DataChannel created: {channel.label}, readyState: {channel.readyState}",
+                    # print(channel),
+                )
+                active_sessions[session_id]["audio_service"] = AudioProcessor(
+                    session_id=session_id, channel=channel
+                )
+
+                @channel.on("open")
+                def on_data_channel_data(event):
+                    print("channel received data", event)
+
+                @channel.on("message")
+                async def on_message(message):
+                    if not isinstance(message, bytes):
+                        print(f"Received via DataChannel: {message}")
+                    else:
+                        ac = active_sessions[session_id]["audio_service"]
+                        response_audio = await ac.add_audio_chunk(message)
+                        if response_audio:
+                            try:
+                                channel.send(response_audio)
+                            except RuntimeError:
+                                print(RuntimeError)
+
+                # res = await audio_processor.add_audio_chunk(message)
+
+                # audio_processor = AudioProcessor(session_id, channel=channel)
+                # print(len(message))
+
+                # channel.send("Server received: ")
+
+                @channel.on("data")
+                async def data(event):
+                    print("the event on the channel is ", event)
 
             @peer_conn.on("icecandidate")
             def on_ice_candidate(event):

@@ -155,3 +155,13 @@ async def handle_ice_candidate(
         print(f"Adding ICE candidate for session {session_id}")
     except Exception as e:
         print(e)
+
+
+async def play_audio(track):
+    try:
+        while True:
+            frame = await track.recv()
+            print(f"Audio frame: {frame.sample_rate} Hz, {frame.channels} ch")
+            # Optional: save or analyze the frame
+    except Exception as e:
+        print(f"Audio track error: {e}")
